@@ -1,0 +1,79 @@
+---
+- name: Install and configure docker on vm
+  hosts: your_Target_group
+  become: yes
+  vars:
+    docker_version: "latest"
+
+  tasks:
+    - name: Install required packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - software-properties-common
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Add docker's official gpg key
+      apt_key: 
+        url: https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg
+        state: present
+
+    - name: Add Docker apt repository
+      apt_repository: 
+        repo: "deb [arch=amd64] https://download.docker.com/linux/{{ ansible_distribution | lower }} {{ ansible_lsb.codename }} stable"
+        state: present
+
+    - name: ENsure docker service is started and enabled
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add user to the docker group 
+      user:
+        name: "{{ ansible_env.USER }}"
+        group: docker
+        append: yes
+
+    - name: Verify Docker installation
+      command: docker --version
+      register: docker_version_output
+      changed_when: false
+
+    - name: Display Docker version
+      debug:
+        msg: "Docker version Installed: {{ docker_version_output.stdout }}"
+
+    - name: Pull a sample docker image hello-world
+      docker_image:
+        name: hello-world
+        tag: latest
+        pull: yes
+
+    - name: run the hello world container
+
+      docker_container:
+        name: hello-world
+        image: hello-world
+        state: started
+        restart_policy: no
+
+
+    - name: Cleanup unused Docker images
+      command: docker image prune -f
+      ignore_errors: yes
+
+
+
+
+
+
+
+### How to run the ansible play book
+
+ansible-playbook -i /path/to/your_inventory_file setupdocker-vm.yml
