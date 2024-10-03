@@ -1,0 +1,123 @@
+---
+
+- name: Install an configure jenkins
+  hosts: jenkins_servers
+  become: yes
+  vars: 
+    jenkins_plugins:
+      - git
+      - workflow-aggregator
+      - blueocean
+      - credentials
+      - ssh-agent
+      - job-dsl
+
+    jenkins_url: "http://{{ ansible_default_ipv4.address }}:8080"
+
+  tasks:
+    - name: Update Apt repository and install dependencies
+      apt:
+        update_cache: yes
+        name:
+          - openjdk-21-jdk
+          - wget
+          - gnupg2
+        state: present
+    - name: Add Jenkins key
+      apt_key:
+        url: "https://pkg.jenkins.io/debian/jenkins.io.key"
+        state: present
+
+    - name: Ad Jenkins Repository
+      apt_repository:
+        repo: "deb http://pkg.jenkins.io/debian-stable binary/"
+        state: present
+
+    - name: Install Jenkins
+      apt:
+        name: jenkins
+        state: present
+        update_cache: yes
+
+
+    - name: Ensure Jenkins is started and enabled
+      service: 
+        name: jenkins
+        state: started
+        enabled: yes
+
+    - name: Wait for Jenkins to start
+      wait_for: 
+        port: 8080
+        delay: 10
+        timeout: 300
+
+    - name: get jenkins initial admin password
+      command: "cat /var/lib/jenkins/secrets/initialAdminPassword"
+      register: jenkins_admin_password
+
+    - name: Install Jenkins plugin 
+      become: false
+      uri: 
+        url: "{{ jenkins_url }}/pluginManager/installNecessaryPlugins"
+        method: POST
+        user: "{{ jenkins_admin_user }}"
+        password: "{{ jenkins_admin_password.stdout }}"
+        headers: 
+          Content-Tpye: "application/xml"
+        body: "{{ lookup('template', 'plugin.xml.j2') }}"
+        status_code: 200
+
+    - name: Create Jenkins admin user
+      become: false
+      uri:
+        url: "{{ jenkins_url }}/securityRealm/createItem"
+        method: POST
+        user: "{{ jenkins_admin_user }}"
+        password: "{{ jenkins_admin_password.stdout }}"
+        headers:
+          Content-Type: "application/json"
+        body: >
+          {
+            "username": "{{ jenkins_admin_user }}",
+            "password1": "{{ jenkins_admin_password }}",
+            "password2": "{{ jenkins_admin_password }}",
+            "fullname": "Jenkins Admin",
+            "email": "admin@example.com"
+          }
+        status_code: 200
+
+    - name: Configure Jenkins to use custom URL
+      become: false
+      uri:
+        url: "{{ jenkins_url }}/descriptorByName/jenkins.model.Jenkins/updateJenkins"
+        method: POST
+        user: "{{ jenkins_admin_user }}"
+        password: "{{ jenkins_admin_password.stdout }}"
+        headers:
+          Content-Type: "application/json"
+        body: >
+          {
+            "jenkinsUrl": "{{ jenkins_url }}"
+          }
+        status_code: 200
+
+    - name: Wait for Jenkins to be ready
+      uri:
+        url: "{{ jenkins_url }}"
+        method: GET
+        return_content: yes
+      register: jenkins_home
+
+    - name: Output Jenkins URL
+      debug:
+        msg: "Jenkins is ready at {{ jenkins_url }}"
+
+    
+
+
+
+###### How to run the ansible playbook
+
+
+ansible-playbook -i inventory setup_jenkins.yml

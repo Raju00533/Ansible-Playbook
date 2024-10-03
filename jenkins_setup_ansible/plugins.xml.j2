@@ -1,0 +1,10 @@
+<jenkins>
+  <plugins>
+    {% for plugin in jenkins_plugins %}
+    <plugin>
+      <shortName>{{ plugin }}</shortName>
+      <version>latest</version>
+    </plugin>
+    {% endfor %}
+  </plugins>
+</jenkins>
