@@ -1,0 +1,114 @@
+---
+- name: Setup WordPress with MySQL
+  hosts: your_target_host  # Replace with your target host
+  become: yes
+  vars:
+    mysql_root_password: "root_password"  # Change this to a secure password
+    wordpress_db_name: "wordpress_db"
+    wordpress_db_user: "wordpress_user"
+    wordpress_db_password: "secure_password"  # Change this to a secure password
+    wordpress_url: "http://your_domain_or_ip"  # Change this to your domain or IP
+
+  tasks:
+    - name: Install required packages
+      apt:
+        name:
+          - apache2
+          - mysql-server
+          - php
+          - libapache2-mod-php
+          - php-mysql
+          - php-curl
+          - php-gd
+          - php-mbstring
+          - php-xml
+          - php-xmlrpc
+          - php-zip
+          - wget
+        state: present
+        update_cache: yes
+
+    - name: Secure MySQL Installation
+      mysql_secure_installation:
+        login_password: ""
+        root_password: "{{ mysql_root_password }}"
+        remove_anonymous_user: yes
+        disallow_root_login_remotely: yes
+        remove_test_database: yes
+        create_root_user: no
+        state: present
+
+    - name: Create WordPress database
+      mysql_db:
+        name: "{{ wordpress_db_name }}"
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+
+    - name: Create WordPress database user
+      mysql_user:
+        name: "{{ wordpress_db_user }}"
+        password: "{{ wordpress_db_password }}"
+        priv: "{{ wordpress_db_name }}.*:ALL"
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+
+    - name: Download WordPress
+      get_url:
+        url: https://wordpress.org/latest.tar.gz
+        dest: /tmp/wordpress.tar.gz
+
+    - name: Extract WordPress
+      unarchive:
+        src: /tmp/wordpress.tar.gz
+        dest: /var/www/html/
+        remote_src: yes
+
+    - name: Configure WordPress
+      copy:
+        src: wp-config.php.j2  # This will be created in the next step
+        dest: /var/www/html/wordpress/wp-config.php
+
+    - name: Set ownership and permissions
+      file:
+        path: /var/www/html/wordpress
+        owner: www-data
+        group: www-data
+        mode: '0755'
+        recurse: yes
+
+    - name: Enable Apache mod_rewrite
+      command: a2enmod rewrite
+      notify:
+        - Restart Apache
+
+    - name: Create Apache configuration for WordPress
+      copy:
+        dest: /etc/apache2/sites-available/wordpress.conf
+        content: |
+          <VirtualHost *:80>
+              ServerAdmin admin@localhost
+              DocumentRoot /var/www/html/wordpress
+              <Directory /var/www/html/wordpress>
+                  AllowOverride All
+              </Directory>
+              ErrorLog ${APACHE_LOG_DIR}/error.log
+              CustomLog ${APACHE_LOG_DIR}/access.log combined
+          </VirtualHost>
+
+    - name: Enable WordPress site
+      command: a2ensite wordpress.conf
+      notify:
+        - Restart Apache
+
+    - name: Restart Apache
+      service:
+        name: apache2
+        state: restarted
+
+  handlers:
+    - name: Restart Apache
+      service:
+        name: apache2
+        state: restarted
