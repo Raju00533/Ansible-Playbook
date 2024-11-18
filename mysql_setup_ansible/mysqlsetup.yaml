@@ -80,3 +80,5 @@
         state: restarted
 
 
+## How to run the playbook
+ansible-playbook mysqlsetup.yaml
